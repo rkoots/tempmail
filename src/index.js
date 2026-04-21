@@ -14,6 +14,107 @@ const { spawn, exec } = require('child_process');
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Continuous hit process management
+let continuousStats = {
+  isRunning: false,
+  startTime: null,
+  totalRequests: 0,
+  successfulRequests: 0,
+  failedRequests: 0,
+  lastRequestTime: null,
+  averageResponseTime: 0,
+  errors: []
+};
+
+// Automatic continuous hitting function
+function startContinuousHitting() {
+  const targetUrl = process.env.TARGET_URL || 'https://ainewsworld.ai/';
+  const intervalMs = parseInt(process.env.HIT_INTERVAL) || 1000;
+  
+  if (continuousStats.isRunning) {
+    console.log('Continuous hitting already running');
+    return;
+  }
+  
+  continuousStats.isRunning = true;
+  continuousStats.startTime = new Date().toISOString();
+  continuousStats.totalRequests = 0;
+  continuousStats.successfulRequests = 0;
+  continuousStats.failedRequests = 0;
+  continuousStats.lastRequestTime = null;
+  continuousStats.averageResponseTime = 0;
+  continuousStats.errors = [];
+  
+  console.log(`Starting automatic continuous hits to ${targetUrl} with ${intervalMs}ms interval`);
+  
+  const hitTarget = async () => {
+    if (!continuousStats.isRunning) return;
+    
+    const requestStart = Date.now();
+    
+    try {
+      const response = await new Promise((resolve, reject) => {
+        const req = https.get(targetUrl, (res) => {
+          let data = '';
+          res.on('data', chunk => data += chunk);
+          res.on('end', () => {
+            resolve({
+              statusCode: res.statusCode,
+              responseTime: Date.now() - requestStart
+            });
+          });
+        });
+        
+        req.on('error', reject);
+        req.setTimeout(10000, () => {
+          req.destroy();
+          reject(new Error('Request timeout'));
+        });
+      });
+      
+      const responseTime = Date.now() - requestStart;
+      
+      continuousStats.totalRequests++;
+      continuousStats.lastRequestTime = new Date().toISOString();
+      
+      if (response.statusCode >= 200 && response.statusCode < 400) {
+        continuousStats.successfulRequests++;
+      } else {
+        continuousStats.failedRequests++;
+        continuousStats.errors.push({
+          error: `HTTP ${response.statusCode}`,
+          time: new Date().toISOString(),
+          responseTime
+        });
+      }
+      
+      // Update average response time
+      continuousStats.averageResponseTime = 
+        (continuousStats.averageResponseTime * (continuousStats.totalRequests - 1) + responseTime) / continuousStats.totalRequests;
+      
+      console.log(`Auto hit #${continuousStats.totalRequests}: ${response.statusCode} (${responseTime}ms)`);
+      
+    } catch (error) {
+      continuousStats.totalRequests++;
+      continuousStats.failedRequests++;
+      continuousStats.lastRequestTime = new Date().toISOString();
+      continuousStats.errors.push({
+        error: error.message,
+        time: new Date().toISOString()
+      });
+      console.error(`Auto hit error #${continuousStats.totalRequests}:`, error.message);
+    }
+    
+    // Schedule next hit
+    if (continuousStats.isRunning) {
+      setTimeout(hitTarget, intervalMs);
+    }
+  };
+  
+  // Start the first hit
+  setTimeout(hitTarget, 1000); // Start after 1 second delay
+}
+
 // Configure multer for file uploads
 const upload = multer({
   dest: 'uploads/',
@@ -514,6 +615,37 @@ app.get('/payload', async (req, res) => {
   }
 });
 
+// Status endpoint for continuous hitting
+app.get('/status', async (req, res) => {
+  try {
+    const currentTime = new Date();
+    const duration = continuousStats.startTime ? 
+      (currentTime - new Date(continuousStats.startTime)) / 1000 : 0;
+    
+    const currentStats = {
+      ...continuousStats,
+      duration,
+      requestsPerSecond: duration > 0 ? (continuousStats.totalRequests / duration).toFixed(2) : 0,
+      uptime: continuousStats.isRunning ? duration : 0,
+      targetUrl: process.env.TARGET_URL || 'https://ainewsworld.ai/',
+      hitInterval: parseInt(process.env.HIT_INTERVAL) || 1000
+    };
+    
+    res.json({
+      success: true,
+      message: 'Automatic continuous hitting status',
+      stats: currentStats
+    });
+    
+  } catch (error) {
+    console.error('Error in status endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Error handling middleware
 app.use((error, req, res, next) => {
   console.error('Unhandled error:', error);
@@ -538,6 +670,12 @@ app.listen(port, () => {
   console.log(`Email service running on port ${port}`);
   console.log(`Rate limit: ${process.env.RATE_LIMIT || 2} emails/second`);
   console.log(`Health check: http://localhost:${port}/health`);
+  console.log(`Status check: http://localhost:${port}/status`);
+  
+  // Start automatic continuous hitting
+  setTimeout(() => {
+    startContinuousHitting();
+  }, 2000); // Start after 2 seconds to ensure server is fully ready
 });
 
 module.exports = app;
