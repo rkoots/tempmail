@@ -22,8 +22,7 @@ let continuousStats = {
   successfulRequests: 0,
   failedRequests: 0,
   lastRequestTime: null,
-  averageResponseTime: 0,
-  errors: []
+  averageResponseTime: 0
 };
 
 // Automatic continuous hitting function
@@ -44,7 +43,6 @@ function startContinuousHitting() {
   continuousStats.failedRequests = 0;
   continuousStats.lastRequestTime = null;
   continuousStats.averageResponseTime = 0;
-  continuousStats.errors = [];
   
   console.log(`Starting automatic continuous hits to ${targetUrl} with ${parallelThreads} parallel threads and ${intervalMs}ms interval`);
   
@@ -72,11 +70,6 @@ function startContinuousHitting() {
                 continuousStats.successfulRequests++;
               } else {
                 continuousStats.failedRequests++;
-                continuousStats.errors.push({
-                  error: `HTTP ${res.statusCode}`,
-                  time: new Date().toISOString(),
-                  responseTime
-                });
               }
               
               // Update average response time
@@ -95,11 +88,6 @@ function startContinuousHitting() {
             continuousStats.totalRequests++;
             continuousStats.failedRequests++;
             continuousStats.lastRequestTime = new Date().toISOString();
-            continuousStats.errors.push({
-              error: error.message,
-              time: new Date().toISOString(),
-              responseTime
-            });
             
             continuousStats.averageResponseTime = 
               (continuousStats.averageResponseTime * (continuousStats.totalRequests - 1) + responseTime) / continuousStats.totalRequests;
@@ -116,11 +104,6 @@ function startContinuousHitting() {
             continuousStats.totalRequests++;
             continuousStats.failedRequests++;
             continuousStats.lastRequestTime = new Date().toISOString();
-            continuousStats.errors.push({
-              error: 'Request timeout',
-              time: new Date().toISOString(),
-              responseTime
-            });
             
             continuousStats.averageResponseTime = 
               (continuousStats.averageResponseTime * (continuousStats.totalRequests - 1) + responseTime) / continuousStats.totalRequests;
@@ -136,11 +119,6 @@ function startContinuousHitting() {
           continuousStats.totalRequests++;
           continuousStats.failedRequests++;
           continuousStats.lastRequestTime = new Date().toISOString();
-          continuousStats.errors.push({
-            error: error.message,
-            time: new Date().toISOString(),
-            responseTime
-          });
           
           continuousStats.averageResponseTime = 
             (continuousStats.averageResponseTime * (continuousStats.totalRequests - 1) + responseTime) / continuousStats.totalRequests;
