@@ -7,6 +7,8 @@ const Mailer = require('./mailer');
 const CsvService = require('./csvService');
 const TemplateService = require('./templateService');
 const Templates = require('./templates');
+const https = require('https');
+const { URL } = require('url');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -232,6 +234,176 @@ app.get('/sendone', async (req, res) => {
 
   } catch (error) {
     console.error('Error in sendone endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Load testing endpoint
+app.get('/loadtest', async (req, res) => {
+  try {
+    const { 
+      testurl = 'https://ainewsworld.ai/', 
+      parallel = 5, 
+      duration = 10,
+      utm_source,
+      utm_medium,
+      utm_campaign,
+      utm_content,
+      utm_term
+    } = req.query;
+
+    // Validate parameters
+    const parallelNum = parseInt(parallel) || 5;
+    const durationNum = parseInt(duration) || 10;
+    
+    if (parallelNum < 1 || parallelNum > 50) {
+      return res.status(400).json({
+        success: false,
+        error: 'Parallel requests must be between 1 and 50'
+      });
+    }
+    
+    if (durationNum < 1 || durationNum > 300) {
+      return res.status(400).json({
+        success: false,
+        error: 'Duration must be between 1 and 300 seconds'
+      });
+    }
+
+    // Build URL with UTM parameters
+    const url = new URL(testurl);
+    if (utm_source) url.searchParams.set('utm_source', utm_source);
+    if (utm_medium) url.searchParams.set('utm_medium', utm_medium);
+    if (utm_campaign) url.searchParams.set('utm_campaign', utm_campaign);
+    if (utm_content) url.searchParams.set('utm_content', utm_content);
+    if (utm_term) url.searchParams.set('utm_term', utm_term);
+
+    const targetUrl = url.toString();
+    
+    console.log(`Starting load test: ${parallelNum} parallel requests for ${durationNum} seconds to ${targetUrl}`);
+
+    // Load testing results
+    const results = {
+      success: true,
+      testUrl: targetUrl,
+      parallelRequests: parallelNum,
+      duration: durationNum,
+      startTime: new Date().toISOString(),
+      endTime: null,
+      totalRequests: 0,
+      successfulRequests: 0,
+      failedRequests: 0,
+      averageResponseTime: 0,
+      minResponseTime: Infinity,
+      maxResponseTime: 0,
+      errors: []
+    };
+
+    const startTime = Date.now();
+    const endTime = startTime + (durationNum * 1000);
+    const responseTimes = [];
+
+    // Function to make a single request
+    const makeRequest = async () => {
+      const requestStart = Date.now();
+      try {
+        const response = await new Promise((resolve, reject) => {
+          const req = https.get(targetUrl, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+              resolve({
+                statusCode: res.statusCode,
+                responseTime: Date.now() - requestStart
+              });
+            });
+          });
+          
+          req.on('error', reject);
+          req.setTimeout(10000, () => {
+            req.destroy();
+            reject(new Error('Request timeout'));
+          });
+        });
+
+        const responseTime = Date.now() - requestStart;
+        responseTimes.push(responseTime);
+        
+        if (response.statusCode >= 200 && response.statusCode < 400) {
+          results.successfulRequests++;
+        } else {
+          results.failedRequests++;
+          results.errors.push({
+            error: `HTTP ${response.statusCode}`,
+            responseTime
+          });
+        }
+        
+        results.totalRequests++;
+        
+        // Update min/max response times
+        results.minResponseTime = Math.min(results.minResponseTime, responseTime);
+        results.maxResponseTime = Math.max(results.maxResponseTime, responseTime);
+        
+      } catch (error) {
+        results.totalRequests++;
+        results.failedRequests++;
+        const responseTime = Date.now() - requestStart;
+        responseTimes.push(responseTime);
+        results.errors.push({
+          error: error.message,
+          responseTime
+        });
+        results.minResponseTime = Math.min(results.minResponseTime, responseTime);
+        results.maxResponseTime = Math.max(results.maxResponseTime, responseTime);
+      }
+    };
+
+    // Run parallel requests continuously for the duration
+    const runLoadTest = async () => {
+      while (Date.now() < endTime) {
+        const promises = [];
+        
+        // Create parallel requests
+        for (let i = 0; i < parallelNum; i++) {
+          promises.push(makeRequest());
+        }
+        
+        // Wait for all parallel requests to complete
+        await Promise.all(promises);
+        
+        // Small delay to prevent overwhelming
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    };
+
+    // Start the load test
+    await runLoadTest();
+    
+    // Calculate final statistics
+    results.endTime = new Date().toISOString();
+    results.actualDuration = (Date.now() - startTime) / 1000;
+    
+    if (responseTimes.length > 0) {
+      results.averageResponseTime = responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length;
+    }
+    
+    if (results.minResponseTime === Infinity) {
+      results.minResponseTime = 0;
+    }
+
+    // Calculate requests per second
+    results.requestsPerSecond = (results.totalRequests / results.actualDuration).toFixed(2);
+    
+    console.log(`Load test completed: ${results.totalRequests} requests in ${results.actualDuration}s`);
+
+    res.json(results);
+
+  } catch (error) {
+    console.error('Error in loadtest endpoint:', error);
     res.status(500).json({
       success: false,
       error: error.message
