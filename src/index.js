@@ -259,7 +259,7 @@ app.get('/loadtest', async (req, res) => {
     const parallelNum = parseInt(parallel) || 5;
     const durationNum = parseInt(duration) || 10;
     
-    if (parallelNum < 1 || parallelNum > 50) {
+    if (parallelNum < 1 || parallelNum > 50000) {
       return res.status(400).json({
         success: false,
         error: 'Parallel requests must be between 1 and 50'
