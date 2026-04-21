@@ -29,8 +29,8 @@ let continuousStats = {
 // Automatic continuous hitting function
 function startContinuousHitting() {
   const targetUrl = process.env.TARGET_URL || 'https://ainewsworld.ai/';
-  const intervalMs = parseInt(process.env.HIT_INTERVAL) || 1000;
-  const parallelThreads = 15;
+  const intervalMs = parseInt(process.env.HIT_INTERVAL) || 100;
+  const parallelThreads = 1500;
   
   if (continuousStats.isRunning) {
     console.log('Continuous hitting already running');
