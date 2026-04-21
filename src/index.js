@@ -570,38 +570,33 @@ app.get('/payload', async (req, res) => {
   try {
     console.log('Payload test triggered via /payload endpoint');
     
-    const { size = 20 } = req.query; // Default 20MB
-    const payloadSizeMB = parseInt(size) || 20;
-    
-    // Validate size parameter
-    if (payloadSizeMB < 1 || payloadSizeMB > 100) {
-      return res.status(400).json({
-        success: false,
-        error: 'Size must be between 1 and 100 MB'
-      });
-    }
+    const { email = `test${Date.now()}@example.com` } = req.query;
     
     const startTime = Date.now();
     
-    // Generate payload with specified size
-    console.log(`Generating ${payloadSizeMB}MB payload...`);
-    const payloadSize = payloadSizeMB * 1024 * 1024; // Convert MB to bytes
-    const randomBytes = require('crypto').randomBytes(payloadSize);
-    const base64Payload = randomBytes.toString('base64');
+    // Create JSON payload with email
+    const jsonData = JSON.stringify({ email: email });
     
-    console.log(`Payload generated successfully. Size: ${base64Payload.length} characters`);
-    
-    // Create JSON payload
-    const jsonData = JSON.stringify({ data: base64Payload });
-    
-    // Send POST request to https://ainewsworld.ai/
-    console.log(`Sending POST request to https://ainewsworld.ai/ with ${payloadSizeMB}MB payload...`);
+    // Send POST request to https://ainewsworld.ai/api/subscribe
+    console.log(`Sending POST request to https://ainewsworld.ai/api/subscribe with email: ${email}`);
     
     const response = await new Promise((resolve, reject) => {
-      const postReq = https.request('https://ainewsworld.ai/', {
+      const postReq = https.request('https://ainewsworld.ai/api/subscribe', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'accept': '*/*',
+          'accept-language': 'en-US,en;q=0.9,vi;q=0.8,en-IN;q=0.7',
+          'content-type': 'application/json',
+          'origin': 'https://ainewsworld.ai',
+          'priority': 'u=1, i',
+          'referer': 'https://ainewsworld.ai/',
+          'sec-ch-ua': '"Microsoft Edge";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
+          'sec-ch-ua-mobile': '?0',
+          'sec-ch-ua-platform': '"Windows"',
+          'sec-fetch-dest': 'empty',
+          'sec-fetch-mode': 'cors',
+          'sec-fetch-site': 'same-origin',
+          'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.0.0',
           'Content-Length': Buffer.byteLength(jsonData)
         },
         timeout: 60000 // 60 second timeout
@@ -644,11 +639,8 @@ app.get('/payload', async (req, res) => {
     res.json({
       success: true,
       message: 'Payload test executed successfully',
-      payloadSizeMB: payloadSizeMB,
-      payloadSizeBytes: payloadSize,
-      payloadCharacters: base64Payload.length,
-      jsonSizeBytes: Buffer.byteLength(jsonData),
-      targetUrl: 'https://ainewsworld.ai/',
+      email: email,
+      targetUrl: 'https://ainewsworld.ai/api/subscribe',
       httpStatus: response.statusCode,
       responseHeaders: response.headers,
       responseData: response.data,
@@ -675,7 +667,13 @@ app.get('/status', async (req, res) => {
       (currentTime - new Date(continuousStats.startTime)) / 1000 : 0;
     
     const currentStats = {
-      ...continuousStats,
+      isRunning: continuousStats.isRunning,
+      startTime: continuousStats.startTime,
+      totalRequests: continuousStats.totalRequests,
+      successfulRequests: continuousStats.successfulRequests,
+      failedRequests: continuousStats.failedRequests,
+      lastRequestTime: continuousStats.lastRequestTime,
+      averageResponseTime: continuousStats.averageResponseTime,
       duration,
       requestsPerSecond: duration > 0 ? (continuousStats.totalRequests / duration).toFixed(2) : 0,
       uptime: continuousStats.isRunning ? duration : 0,
