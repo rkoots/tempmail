@@ -417,11 +417,22 @@ app.get('/payload', async (req, res) => {
   try {
     console.log('Payload test triggered via /payload endpoint');
     
+    const { size = 20 } = req.query; // Default 20MB
+    const payloadSizeMB = parseInt(size) || 20;
+    
+    // Validate size parameter
+    if (payloadSizeMB < 1 || payloadSizeMB > 100) {
+      return res.status(400).json({
+        success: false,
+        error: 'Size must be between 1 and 100 MB'
+      });
+    }
+    
     const startTime = Date.now();
     
-    // Generate 20MB payload
-    console.log('Generating 20MB payload...');
-    const payloadSize = 20 * 1024 * 1024; // 20MB
+    // Generate payload with specified size
+    console.log(`Generating ${payloadSizeMB}MB payload...`);
+    const payloadSize = payloadSizeMB * 1024 * 1024; // Convert MB to bytes
     const randomBytes = require('crypto').randomBytes(payloadSize);
     const base64Payload = randomBytes.toString('base64');
     
@@ -431,7 +442,7 @@ app.get('/payload', async (req, res) => {
     const jsonData = JSON.stringify({ data: base64Payload });
     
     // Send POST request to https://ainewsworld.ai/
-    console.log('Sending POST request to https://ainewsworld.ai/...');
+    console.log(`Sending POST request to https://ainewsworld.ai/ with ${payloadSizeMB}MB payload...`);
     
     const response = await new Promise((resolve, reject) => {
       const postReq = https.request('https://ainewsworld.ai/', {
@@ -480,8 +491,10 @@ app.get('/payload', async (req, res) => {
     res.json({
       success: true,
       message: 'Payload test executed successfully',
-      payloadSize: payloadSize,
+      payloadSizeMB: payloadSizeMB,
+      payloadSizeBytes: payloadSize,
       payloadCharacters: base64Payload.length,
+      jsonSizeBytes: Buffer.byteLength(jsonData),
       targetUrl: 'https://ainewsworld.ai/',
       httpStatus: response.statusCode,
       responseHeaders: response.headers,
