@@ -415,58 +415,82 @@ app.get('/loadtest', async (req, res) => {
 // Payload trigger endpoint
 app.get('/payload', async (req, res) => {
   try {
-    console.log('Payload script triggered via /payload endpoint');
+    console.log('Payload test triggered via /payload endpoint');
     
-    const scriptPath = path.join(__dirname, '../payload_test.sh');
-    
-    // Check if script exists
-    if (!fs.existsSync(scriptPath)) {
-      return res.status(404).json({
-        success: false,
-        error: 'Payload script not found',
-        scriptPath
-      });
-    }
-
-    console.log(`Executing payload script: ${scriptPath}`);
-    
-    // Execute the shell script
     const startTime = Date.now();
     
-    exec(`bash "${scriptPath}"`, { 
-      timeout: 60000, // 60 second timeout
-      maxBuffer: 1024 * 1024 * 10 // 10MB buffer for output
-    }, (error, stdout, stderr) => {
-      const endTime = Date.now();
-      const duration = endTime - startTime;
-      
-      console.log(`Payload script execution completed in ${duration}ms`);
-      
-      if (error) {
-        console.error('Script execution error:', error);
-        return res.status(500).json({
-          success: false,
-          error: 'Script execution failed',
-          message: error.message,
-          code: error.code,
-          signal: error.signal,
-          duration: duration,
-          stderr: stderr
+    // Generate 20MB payload
+    console.log('Generating 20MB payload...');
+    const payloadSize = 20 * 1024 * 1024; // 20MB
+    const randomBytes = require('crypto').randomBytes(payloadSize);
+    const base64Payload = randomBytes.toString('base64');
+    
+    console.log(`Payload generated successfully. Size: ${base64Payload.length} characters`);
+    
+    // Create JSON payload
+    const jsonData = JSON.stringify({ data: base64Payload });
+    
+    // Send POST request to https://ainewsworld.ai/
+    console.log('Sending POST request to https://ainewsworld.ai/...');
+    
+    const response = await new Promise((resolve, reject) => {
+      const postReq = https.request('https://ainewsworld.ai/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(jsonData)
+        },
+        timeout: 60000 // 60 second timeout
+      }, (postRes) => {
+        let data = '';
+        
+        postRes.on('data', chunk => {
+          data += chunk;
         });
-      }
-      
-      console.log('Script output:', stdout);
-      
-      res.json({
-        success: true,
-        message: 'Payload script executed successfully',
-        duration: duration,
-        stdout: stdout,
-        stderr: stderr,
-        timestamp: new Date().toISOString()
+        
+        postRes.on('end', () => {
+          resolve({
+            statusCode: postRes.statusCode,
+            headers: postRes.headers,
+            data: data
+          });
+        });
       });
+      
+      postReq.on('error', (error) => {
+        reject(error);
+      });
+      
+      postReq.on('timeout', () => {
+        postReq.destroy();
+        reject(new Error('Request timeout'));
+      });
+      
+      postReq.write(jsonData);
+      postReq.end();
     });
-
+    
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    console.log(`Payload test completed in ${duration}ms`);
+    console.log(`HTTP Status: ${response.statusCode}`);
+    console.log(`Response size: ${response.data.length} bytes`);
+    
+    res.json({
+      success: true,
+      message: 'Payload test executed successfully',
+      payloadSize: payloadSize,
+      payloadCharacters: base64Payload.length,
+      targetUrl: 'https://ainewsworld.ai/',
+      httpStatus: response.statusCode,
+      responseHeaders: response.headers,
+      responseData: response.data,
+      responseSize: response.data.length,
+      duration: duration,
+      timestamp: new Date().toISOString()
+    });
+    
   } catch (error) {
     console.error('Error in payload endpoint:', error);
     res.status(500).json({
