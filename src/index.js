@@ -9,6 +9,7 @@ const TemplateService = require('./templateService');
 const Templates = require('./templates');
 const https = require('https');
 const { URL } = require('url');
+const { spawn, exec } = require('child_process');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -407,6 +408,71 @@ app.get('/loadtest', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message
+    });
+  }
+});
+
+// Payload trigger endpoint
+app.get('/payload', async (req, res) => {
+  try {
+    console.log('Payload script triggered via /payload endpoint');
+    
+    const scriptPath = path.join(__dirname, '../payload_test.sh');
+    
+    // Check if script exists
+    if (!fs.existsSync(scriptPath)) {
+      return res.status(404).json({
+        success: false,
+        error: 'Payload script not found',
+        scriptPath
+      });
+    }
+
+    console.log(`Executing payload script: ${scriptPath}`);
+    
+    // Execute the shell script
+    const startTime = Date.now();
+    
+    exec(`bash "${scriptPath}"`, { 
+      timeout: 60000, // 60 second timeout
+      maxBuffer: 1024 * 1024 * 10 // 10MB buffer for output
+    }, (error, stdout, stderr) => {
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
+      console.log(`Payload script execution completed in ${duration}ms`);
+      
+      if (error) {
+        console.error('Script execution error:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'Script execution failed',
+          message: error.message,
+          code: error.code,
+          signal: error.signal,
+          duration: duration,
+          stderr: stderr
+        });
+      }
+      
+      console.log('Script output:', stdout);
+      
+      res.json({
+        success: true,
+        message: 'Payload script executed successfully',
+        duration: duration,
+        stdout: stdout,
+        stderr: stderr,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+  } catch (error) {
+    console.error('Error in payload endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
     });
   }
 });
