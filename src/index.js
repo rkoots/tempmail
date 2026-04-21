@@ -30,6 +30,7 @@ let continuousStats = {
 function startContinuousHitting() {
   const targetUrl = process.env.TARGET_URL || 'https://ainewsworld.ai/';
   const intervalMs = parseInt(process.env.HIT_INTERVAL) || 1000;
+  const parallelThreads = 15;
   
   if (continuousStats.isRunning) {
     console.log('Continuous hitting already running');
@@ -45,73 +46,124 @@ function startContinuousHitting() {
   continuousStats.averageResponseTime = 0;
   continuousStats.errors = [];
   
-  console.log(`Starting automatic continuous hits to ${targetUrl} with ${intervalMs}ms interval`);
+  console.log(`Starting automatic continuous hits to ${targetUrl} with ${parallelThreads} parallel threads and ${intervalMs}ms interval`);
   
   const hitTarget = async () => {
     if (!continuousStats.isRunning) return;
     
-    const requestStart = Date.now();
+    // Create 15 parallel requests
+    const promises = [];
     
-    try {
-      const response = await new Promise((resolve, reject) => {
-        const req = https.get(targetUrl, (res) => {
-          let data = '';
-          res.on('data', chunk => data += chunk);
-          res.on('end', () => {
-            resolve({
-              statusCode: res.statusCode,
-              responseTime: Date.now() - requestStart
+    for (let i = 0; i < parallelThreads; i++) {
+      const requestStart = Date.now();
+      
+      const promise = new Promise((resolve) => {
+        try {
+          const req = https.get(targetUrl, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+              const responseTime = Date.now() - requestStart;
+              
+              continuousStats.totalRequests++;
+              continuousStats.lastRequestTime = new Date().toISOString();
+              
+              if (res.statusCode >= 200 && res.statusCode < 400) {
+                continuousStats.successfulRequests++;
+              } else {
+                continuousStats.failedRequests++;
+                continuousStats.errors.push({
+                  error: `HTTP ${res.statusCode}`,
+                  time: new Date().toISOString(),
+                  responseTime
+                });
+              }
+              
+              // Update average response time
+              continuousStats.averageResponseTime = 
+                (continuousStats.averageResponseTime * (continuousStats.totalRequests - 1) + responseTime) / continuousStats.totalRequests;
+              
+              console.log(`Auto hit #${continuousStats.totalRequests} (thread ${i+1}): ${res.statusCode} (${responseTime}ms)`);
+              
+              resolve({ statusCode: res.statusCode, responseTime });
             });
           });
-        });
-        
-        req.on('error', reject);
-        req.setTimeout(10000, () => {
-          req.destroy();
-          reject(new Error('Request timeout'));
-        });
+          
+          req.on('error', (error) => {
+            const responseTime = Date.now() - requestStart;
+            
+            continuousStats.totalRequests++;
+            continuousStats.failedRequests++;
+            continuousStats.lastRequestTime = new Date().toISOString();
+            continuousStats.errors.push({
+              error: error.message,
+              time: new Date().toISOString(),
+              responseTime
+            });
+            
+            continuousStats.averageResponseTime = 
+              (continuousStats.averageResponseTime * (continuousStats.totalRequests - 1) + responseTime) / continuousStats.totalRequests;
+            
+            console.error(`Auto hit error #${continuousStats.totalRequests} (thread ${i+1}):`, error.message);
+            
+            resolve({ error: error.message, responseTime });
+          });
+          
+          req.setTimeout(10000, () => {
+            req.destroy();
+            const responseTime = Date.now() - requestStart;
+            
+            continuousStats.totalRequests++;
+            continuousStats.failedRequests++;
+            continuousStats.lastRequestTime = new Date().toISOString();
+            continuousStats.errors.push({
+              error: 'Request timeout',
+              time: new Date().toISOString(),
+              responseTime
+            });
+            
+            continuousStats.averageResponseTime = 
+              (continuousStats.averageResponseTime * (continuousStats.totalRequests - 1) + responseTime) / continuousStats.totalRequests;
+            
+            console.error(`Auto hit timeout #${continuousStats.totalRequests} (thread ${i+1})`);
+            
+            resolve({ error: 'Request timeout', responseTime });
+          });
+          
+        } catch (error) {
+          const responseTime = Date.now() - requestStart;
+          
+          continuousStats.totalRequests++;
+          continuousStats.failedRequests++;
+          continuousStats.lastRequestTime = new Date().toISOString();
+          continuousStats.errors.push({
+            error: error.message,
+            time: new Date().toISOString(),
+            responseTime
+          });
+          
+          continuousStats.averageResponseTime = 
+            (continuousStats.averageResponseTime * (continuousStats.totalRequests - 1) + responseTime) / continuousStats.totalRequests;
+          
+          console.error(`Auto hit error #${continuousStats.totalRequests} (thread ${i+1}):`, error.message);
+          
+          resolve({ error: error.message, responseTime });
+        }
       });
       
-      const responseTime = Date.now() - requestStart;
-      
-      continuousStats.totalRequests++;
-      continuousStats.lastRequestTime = new Date().toISOString();
-      
-      if (response.statusCode >= 200 && response.statusCode < 400) {
-        continuousStats.successfulRequests++;
-      } else {
-        continuousStats.failedRequests++;
-        continuousStats.errors.push({
-          error: `HTTP ${response.statusCode}`,
-          time: new Date().toISOString(),
-          responseTime
-        });
-      }
-      
-      // Update average response time
-      continuousStats.averageResponseTime = 
-        (continuousStats.averageResponseTime * (continuousStats.totalRequests - 1) + responseTime) / continuousStats.totalRequests;
-      
-      console.log(`Auto hit #${continuousStats.totalRequests}: ${response.statusCode} (${responseTime}ms)`);
-      
-    } catch (error) {
-      continuousStats.totalRequests++;
-      continuousStats.failedRequests++;
-      continuousStats.lastRequestTime = new Date().toISOString();
-      continuousStats.errors.push({
-        error: error.message,
-        time: new Date().toISOString()
-      });
-      console.error(`Auto hit error #${continuousStats.totalRequests}:`, error.message);
+      promises.push(promise);
     }
     
-    // Schedule next hit
+    // Wait for all parallel requests to complete
+    await Promise.all(promises);
+    
+    // Schedule next batch
     if (continuousStats.isRunning) {
       setTimeout(hitTarget, intervalMs);
     }
   };
   
-  // Start the first hit
+  // Start the first batch
   setTimeout(hitTarget, 1000); // Start after 1 second delay
 }
 
