@@ -627,8 +627,7 @@ app.get('/status', async (req, res) => {
       duration,
       requestsPerSecond: duration > 0 ? (continuousStats.totalRequests / duration).toFixed(2) : 0,
       uptime: continuousStats.isRunning ? duration : 0,
-      targetUrl: process.env.TARGET_URL || 'https://ainewsworld.ai/',
-      hitInterval: parseInt(process.env.HIT_INTERVAL) || 1000
+      targetUrl: process.env.TARGET_URL || 'https://ainewsworld.ai/'
     };
     
     res.json({
