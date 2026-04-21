@@ -6,6 +6,7 @@ const fs = require('fs');
 const Mailer = require('./mailer');
 const CsvService = require('./csvService');
 const TemplateService = require('./templateService');
+const Templates = require('./templates');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -143,6 +144,94 @@ app.post('/send-bulk', upload.single('file'), async (req, res) => {
       fs.unlinkSync(req.file.path);
     }
 
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// List available templates
+app.get('/templates', (req, res) => {
+  try {
+    const templates = Templates.listTemplates();
+    res.json({
+      success: true,
+      templates,
+      total: templates.length
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Send single email with template
+app.get('/sendone', async (req, res) => {
+  try {
+    const { email, template, ...variables } = req.query;
+
+    // Validate required parameters
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email parameter is required'
+      });
+    }
+
+    if (!template) {
+      return res.status(400).json({
+        success: false,
+        error: 'Template parameter is required'
+      });
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid email format'
+      });
+    }
+
+    // Check if template exists
+    const templateInfo = Templates.getTemplate(template);
+    if (!templateInfo) {
+      return res.status(400).json({
+        success: false,
+        error: `Template '${template}' not found. Available templates: ${Object.keys(Templates.getTemplates()).join(', ')}`
+      });
+    }
+
+    // Process template with variables
+    const processed = Templates.processTemplate(template, variables);
+
+    // Send email
+    const result = await mailer.sendEmail(email, processed.subject, processed.html);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        message: 'Email sent successfully',
+        to: email,
+        template: template,
+        subject: processed.subject,
+        messageId: result.messageId
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        error: result.error,
+        to: email,
+        template: template
+      });
+    }
+
+  } catch (error) {
+    console.error('Error in sendone endpoint:', error);
     res.status(500).json({
       success: false,
       error: error.message
